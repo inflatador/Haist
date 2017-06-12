@@ -146,8 +146,8 @@ if not rackconnect_regions:
     rackconnect_region =  0
 else:
     print ("""
-           RackConnect v3 detected on account. At this time, RCv3 region is only
-           supported as the destination region.""")
+           RackConnect v3 detected on account. At this time, the RCv3 region is
+           only supported as the destination region.""")
     raw_input('Press Enter to accept this, or CTRL-C to quit: ')
     rackconnect_region = rackconnect_regions[0]
     rackconnect_network = find_rackconnect_network(token, account, rackconnect_region)
@@ -510,7 +510,7 @@ def build_dst_srvr(token, rackconnect_region,rackconnect_network):
                 break
             time.sleep(30)
             print("""
-                  "Step 1 of 3: Cloud server is in %s status. Checking again
+                  "Step 1 of 3: RackConnect cloud server is in %s status. Checking again
                   in 30 seconds"
                   """) % server_status
             server_timer=server_timer + 1
@@ -531,7 +531,7 @@ def build_dst_srvr(token, rackconnect_region,rackconnect_network):
             print "Server is not in active state, exiting"
     #This is the API call to provision a public IP. It doesn't have the public
     #IP in the response, just a UUID associated with the pubIP.
-        print "Step 2 of 3: requesting new RackConnect public IP"
+        print "Step 2 of 3: Build complete. Requesting new RackConnect public IP"
         rcv3_pub_ip_req=requests.post(url=rcv3_pub_ip_url, data=json.dumps(rcv3_pub_ip_payload), headers=Header)
         rcv3_pub_ip_id=rcv3_pub_ip_req.json()["id"]
         rcv3_provisioned_pub_ip_url = rcv3_pub_ip_url + "/" + rcv3_pub_ip_id
@@ -542,7 +542,7 @@ def build_dst_srvr(token, rackconnect_region,rackconnect_network):
     #Extremely basic error handling for problems adding a public IP
             if rcv3_provision_ip_status == "ACTIVE":
                 new_rcv3_pub_ip=rcv3_provision_ip_check.json()["public_ip_v4"]
-                print("""Step 3 of 3: receiving RackConnect public IP.
+                print("""Step 3 of 3: Receiving RackConnect public IP.
                        RackConnect Public IP is %s. Go to Firewall Manager in
                        the myrackspace.com portal and open TCP port 22 access
                        from source server IP and control server IP, to this IP.
