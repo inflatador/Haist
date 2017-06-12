@@ -12,9 +12,4 @@ At this time, only RackConnect v3 is supported, and only as the destination (not
 
 ## General Usage
 
-Use __control.py__ to build the controller server, which does the actual work of the migration. (Or run control.py from your local computer which has SSH access to both source and destination. Running in __screen__ or __tmux__ is highly recommended).
-
-__haist.py__ does the actual migration work. Run it from the controller server.
-
-
-```
+Use __control.py__ to build the controller server. Next, login to the controller server and run __haist.py__, which does the actual migration work. (Or run control.py from your local computer which has SSH access to both source and destination. Either way, running in __screen__ or __tmux__ is highly recommended).
