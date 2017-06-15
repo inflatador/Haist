@@ -7,7 +7,6 @@ import getpass
 import paramiko
 import time
 import os
-import re
 
 def jprint(jsondoc):
     print json.dumps(jsondoc, sort_keys=True, indent=2, separators=(',', ': '))
@@ -116,15 +115,23 @@ print("")
 
 #Begin RCv3 compatibility changes
 
-def check_for_rackconnect(all_roles):
-# first we check for the rackconnect role
+def check_for_rackconnect(all_roles, account):
+# first we check for the RackConnect API role.
+    # first we check for the RackConnect API role.
     for role in range (len(all_roles)):
         rackconnect_role_check=all_roles[role]["name"]
+#This logic catches accounts with the RCv3 cloud load balancers role as well
         rackconnect_regions=[]
-        if "rackconnect" and "v3" in rackconnect_role_check:
-            rackconnect_regions.append(all_roles[role]["name"].lower().split("-")[1])
-            return rackconnect_regions
+        if "RCv3" and "SG" in rackconnect_role_check:
+            print rackconnect_role_check
+            rackconnect_regions.append(all_roles[role]["name"].lower().split("-")[0].split(":")[1])
             break
+            return rackconnect_regions
+
+        elif "rackconnect" and "v3" in rackconnect_role_check:
+            rackconnect_regions.append(all_roles[role]["name"].lower().split("-")[1])
+            break
+            return rackconnect_regions
 
     #if we've gotten this far, then the account does not have rackconnect
     return rackconnect_regions
