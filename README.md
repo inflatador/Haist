@@ -6,12 +6,10 @@ The destination server's disk size must be the same size, or larger than the ori
 
 Do you have an old Standard flavor server that you'd like to upgrade to a performance flavor like Compute, Memory, or I/O? Using Haist, this can be done with ease. No more fighting with images!
 
-```
-This script is still a work in progress!
+### RackConnect Support
 
-control.py can be used to stand up a control server which gets booted with a config drive and user_data.
-Once built, you can log into the control server with the provided username and password where the
-main script will be presented to you in a screen session - ready to hastily clone a server!
+At this time, only RackConnect v3 is supported, and only as the destination (not source). RackConnect v3 will eventually be supported as a migration source, and RackConnect v2 will eventually be supported as a migration source only.
 
-The main script, "haist.py" can also be run from a local workstation, but this is not reccommended.
-```
+## General Usage
+
+Use __control.py__ to build the controller server. Next, login to the controller server and run __haist.py__, which does the actual migration work. (Or run __readme.py__ from your local computer which has SSH access to both source and destination. Either way, running in __screen__ or __tmux__ is highly recommended).

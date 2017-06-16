@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python
 import requests
 import urllib3
 import json
@@ -7,7 +7,6 @@ import getpass
 import paramiko
 import time
 import os
-import re
 
 def jprint(jsondoc):
     print json.dumps(jsondoc, sort_keys=True, indent=2, separators=(',', ': '))
@@ -101,15 +100,64 @@ def get_token(username,password):
     #loads json reponse into data as a dictionary.
     data = r.json()
     #assign token and account variables with info from json response.
-    token = (data["access"]["token"]["id"])
-    account = (data["access"]["token"]["tenant"]["id"])
-    return token,account
+    token = data["access"]["token"]["id"]
+    account = data["access"]["token"]["tenant"]["id"]
+#needed to detect RCv3 Cloud Identity Role
+    all_roles=data["access"]["user"]["roles"]
+    #
+    return token,account,all_roles
 
-token,account = get_token(username,password)
+token,account,all_roles = get_token(username,password)
 
 print(token)
 
 print("")
+
+#Begin RCv3 compatibility changes
+
+def check_for_rackconnect(all_roles, account):
+# first we check for the RackConnect API role.
+    # first we check for the RackConnect API role.
+    for role in range (len(all_roles)):
+        rackconnect_role_check=all_roles[role]["name"]
+#This logic catches accounts with the RCv3 cloud load balancers role as well
+        rackconnect_regions=[]
+        if "RCv3" and "SG" in rackconnect_role_check:
+            print rackconnect_role_check
+            rackconnect_regions.append(all_roles[role]["name"].lower().split("-")[0].split(":")[1])
+            break
+            return rackconnect_regions
+
+        elif "rackconnect" and "v3" in rackconnect_role_check:
+            rackconnect_regions.append(all_roles[role]["name"].lower().split("-")[1])
+            break
+            return rackconnect_regions
+
+    #if we've gotten this far, then the account does not have rackconnect
+    return rackconnect_regions
+
+def find_rackconnect_network(token, account, rackconnect_region):
+#we'll use the RackConnect v3 API, as it's the source of truth for RCv3 networks
+    Header= {'content-type': 'application/json', 'Accept': 'application/json', 'X-Auth-Token': token}
+    rackconnect_network_url = ("https://" + rackconnect_region +
+    ".rackconnect.api.rackspacecloud.com/v3/" + account + "/cloud_networks")
+    rackconnect_network_list = requests.get(rackconnect_network_url, headers=Header)
+#For now, we just grab the UUID of the first RCv3 network. Later, we'll let you choose.
+    rackconnect_network=rackconnect_network_list.json()[0]["id"]
+    return rackconnect_network
+
+rackconnect_regions=check_for_rackconnect(all_roles)
+
+if not rackconnect_regions:
+    rackconnect_network = 0
+    rackconnect_region =  0
+else:
+    print ("""
+           RackConnect v3 detected on account. At this time, the RCv3 region is
+           only supported as the destination region.""")
+    raw_input('Press Enter to accept this, or CTRL-C to quit: ')
+    rackconnect_region = rackconnect_regions[0]
+    rackconnect_network = find_rackconnect_network(token, account, rackconnect_region)
 
 src_srvr = raw_input('Enter Source Server UUID: ')
 BFV = False
@@ -454,15 +502,124 @@ dst_name = raw_input('Enter a name for the destination server: ')
 #payload if dst is BFV
 #payload = {'server':{'name': str(dst_name),'flavorRef': dst_flavor,'block_device_mapping_v2':[{'boot_index': '0','uuid': dst_image,'volume_size': dst_vol_size,'source_type': 'image','destination_type': 'volume'}]}}
 
-def build_dst_srvr():
-    if dst_BFV:
-        payload = {'server':{'name': str(dst_name),'flavorRef': dst_flavor,'block_device_mapping_v2':[{'boot_index': '0','uuid': dst_image,'volume_size': dst_vol_size,'source_type': 'image','destination_type': 'volume'}]}}
-    else:
-        payload = {'server':{'name': str(dst_name),'imageRef': dst_image,'flavorRef': dst_flavor}}
-    headers = {'Content-type': 'application/json', 'X-Auth-Token': token}
-    url = "https://" + dst_region + ".servers.api.rackspacecloud.com/v2/" + account + "/servers"
+def build_dst_srvr(token, rackconnect_region,rackconnect_network):
+#embedded function for RCv3, as we can't add public IP until Compute
+#build is done.
+    def check_server_progress(token, dst_srvs_url, dst_srvr):
+        Header= {'content-type': 'application/json', 'Accept': 'application/json', 'X-Auth-Token': token}
+        server_timer=0
+        while True:
+            server_url=dst_srvs_url + "/" + dst_srvr
+            server_check=requests.get(url=server_url,headers=Header)
+            server_status=server_check.json()["server"]["status"]
+            if server_status != "BUILD":
+                return server_status
+                break
+            time.sleep(30)
+            print("""
+                  "Step 1 of 3: RackConnect cloud server is in %s status. Checking again
+                  in 30 seconds"
+                  """) % server_status
+            server_timer=server_timer + 1
+            if server_timer >= 120:
+                print "Server build took more than an hour. Giving up!"
+                sys.exit()
+
+    def get_rcv3_pub_ip(token, rackconnect_region, dst_srvr, server_status):
+        Header= {'content-type': 'application/json', 'Accept': 'application/json', 'X-Auth-Token': token}
+        rcv3_pub_ip_payload={
+        "cloud_server": {
+            "id": dst_srvr
+                        }
+                }
+        rcv3_pub_ip_url = ("https://" + rackconnect_region +
+        ".rackconnect.api.rackspacecloud.com/v3/" + account +  "/public_ips")
+        if server_status != "ACTIVE":
+            print "Server is not in active state, exiting"
+    #This is the API call to provision a public IP. It doesn't have the public
+    #IP in the response, just a UUID associated with the pubIP.
+        print "Step 2 of 3: Build complete. Requesting new RackConnect public IP"
+        rcv3_pub_ip_req=requests.post(url=rcv3_pub_ip_url, data=json.dumps(rcv3_pub_ip_payload), headers=Header)
+        rcv3_pub_ip_id=rcv3_pub_ip_req.json()["id"]
+        rcv3_provisioned_pub_ip_url = rcv3_pub_ip_url + "/" + rcv3_pub_ip_id
+        rcv3_provision_ip_timer=0
+        while True:
+            rcv3_provision_ip_check=requests.get(url=rcv3_provisioned_pub_ip_url,headers=Header)
+            rcv3_provision_ip_status=rcv3_provision_ip_check.json()["status"]
+    #Extremely basic error handling for problems adding a public IP
+            if rcv3_provision_ip_status == "ACTIVE":
+                new_rcv3_pub_ip=rcv3_provision_ip_check.json()["public_ip_v4"]
+                print("""Step 3 of 3: Receiving RackConnect public IP.
+                       RackConnect Public IP is %s. Go to Firewall Manager in
+                       the myrackspace.com portal and open TCP port 22 access
+                       from source server IP and control server IP, to this IP.
+                       (Yes, this is needed even for Windows servers).
+                       """) % new_rcv3_pub_ip
+                raw_input('Press enter when firewall rules are set.')
+                return new_rcv3_pub_ip
+                break
+            time.sleep(30)
+            rcv3_provision_ip_timer=rcv3_provision_ip_timer + 1
+            print rcv3_provision_ip_status, rcv3_provision_ip_timer
+            if rcv3_provision_ip_timer >= 4:
+                print "It took more than 2 minutes to provision a public IP! Exiting!"
+#begin main body of build_dst_srvr function
+    if dst_BFV and not rackconnect_region:
+        payload = {
+            'server':{'name': str(dst_name),
+                      'flavorRef': dst_flavor,
+                      'block_device_mapping_v2':[{
+                          'boot_index': '0',
+                          'uuid': dst_image,
+                          'volume_size': dst_vol_size,
+                          'source_type': 'image',
+                          'destination_type': 'volume'}]}}
+
+    elif not dst_BFV and not rackconnect_region:
+        payload = {
+            'server':{'name': str(dst_name),
+                      'imageRef': dst_image,
+                      'flavorRef': dst_flavor}}
+    elif dst_BFV and rackconnect_region:
+        payload = {
+            'server':{'name': str(dst_name),
+                      'flavorRef': dst_flavor,
+                      'block_device_mapping_v2':[{
+                          'boot_index': '0',
+                          'uuid': dst_image,
+                          'volume_size': dst_vol_size,
+                          'source_type': 'image',
+                          'destination_type': 'volume'}],
+                      	  'networks': [{
+                              'uuid': rackconnect_network
+                      		}, {
+                      			'uuid': '11111111-1111-1111-1111-111111111111'
+                      		}],
+                      		"metadata": {
+                      			"build_config": "monitoring_defaults"
+                      		}
+                      }}
+    elif not dst_BFV and rackconnect_region:
+        payload = {
+                'server':{'name': str(dst_name),
+                          'flavorRef': dst_flavor,
+                          'imageRef': dst_image,
+                          	  'networks': [{
+                                  'uuid': rackconnect_network
+                          		}, {
+                          			'uuid': '11111111-1111-1111-1111-111111111111'
+                          		}],
+                          		"metadata": {
+                          			"build_config": "monitoring_defaults"
+                          		}
+                          }}
+    Header= {'content-type': 'application/json', 'Accept': 'application/json',
+             'X-Auth-Token': token}
+    dst_srvs_url = ("https://" + dst_region + ".servers.api.rackspacecloud.com/v2/"
+                + account + "/servers")
+
     try:
-        r = requests.post(url, headers=headers, json=payload)
+        r = requests.post(url=dst_srvs_url, headers=Header, json=payload)
     except requests.ConnectionError as e:
         print("Can't connect to server, please try again or check your internet")
     if r.status_code == 202:
@@ -470,13 +627,20 @@ def build_dst_srvr():
         dst_srvr_pass = (data["server"]["adminPass"])
         global dst_srvr
         dst_srvr = (data["server"]["id"])
+        if rackconnect_region:
+                server_status = check_server_progress(token, dst_srvs_url, dst_srvr)
+                rackconnect_pub_ip = get_rcv3_pub_ip(token, rackconnect_region, dst_srvr, server_status)
+                print "RackConnect public IP is %s" % rackconnect_pub_ip
+
         return dst_srvr_pass
+
     else:
         print("There was a problem requesting the server to be built.")
         print r.status_code
         sys.exit()
 
-dst_srvr_pass = build_dst_srvr()
+dst_srvr_pass = build_dst_srvr(token, rackconnect_region, rackconnect_network)
+
 print("")
 print "Destination server build request accepted, server is building. (New Server UUID: " + dst_srvr + ")"
 
