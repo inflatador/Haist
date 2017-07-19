@@ -110,18 +110,35 @@ def get_token(username,password):
 token,account,all_roles = get_token(username,password)
 
 print(token)
-
 print("")
 
-#Begin RCv3 compatibility changes
 
+<<<<<<< Updated upstream
 def check_for_rackconnect(all_roles, account):
+=======
+def check_for_rackconnect(account, all_roles):
+>>>>>>> Stashed changes
 # first we check for the RackConnect API role.
     # first we check for the RackConnect API role.
     for role in range (len(all_roles)):
         rackconnect_role_check=all_roles[role]["name"]
 #This logic catches accounts with the RCv3 cloud load balancers role as well
         rackconnect_regions=[]
+<<<<<<< Updated upstream
+
+        if "rackconnect" and "v3" in rackconnect_role_check:
+            rackconnect_regions.append(all_roles[role]["name"].lower().split("-")[1])
+            break
+            return rackconnect_regions
+
+        elif "RCv3" and "SG" in rackconnect_role_check:
+            print rackconnect_role_check
+            rackconnect_regions.append(all_roles[role]["name"].lower().split("-")[0].split(":")[1])
+            break
+            return rackconnect_regions
+
+
+=======
         if "RCv3" and "SG" in rackconnect_role_check:
             print rackconnect_role_check
             rackconnect_regions.append(all_roles[role]["name"].lower().split("-")[0].split(":")[1])
@@ -132,6 +149,7 @@ def check_for_rackconnect(all_roles, account):
             rackconnect_regions.append(all_roles[role]["name"].lower().split("-")[1])
             break
             return rackconnect_regions
+>>>>>>> Stashed changes
 
     #if we've gotten this far, then the account does not have rackconnect
     return rackconnect_regions
@@ -146,7 +164,11 @@ def find_rackconnect_network(token, account, rackconnect_region):
     rackconnect_network=rackconnect_network_list.json()[0]["id"]
     return rackconnect_network
 
-rackconnect_regions=check_for_rackconnect(all_roles)
+<<<<<<< Updated upstream
+rackconnect_regions=check_for_rackconnect(all_roles,account)
+=======
+rackconnect_regions=check_for_rackconnect(account, all_roles)
+>>>>>>> Stashed changes
 
 if not rackconnect_regions:
     rackconnect_network = 0
@@ -855,6 +877,20 @@ for line in stdout.readlines():
 for line in  stderr.readlines():
     print line,
 
+#We have to wipe out the partition table on destination,
+#otherwise Windows servers won't migrate properly
+
+print ("")
+print ("Zeroing out the partition table on destination in preparation for copy")
+stdin, stdout, stderr = ssh.exec_command("screen -LdmS HAIST bash -c \'ssh root@"\
++ str(dst_ip) + "dd if=/dev/zero of=/dev/xvdb bs=512 count=2\"; exec bash\'")
+
+<<<<<<< Updated upstream
+
+#Copying the disk via DD
+
+=======
+>>>>>>> Stashed changes
 stdin, stdout, stderr = ssh.exec_command("screen -LdmS HAIST bash -c \'dd if=/dev/xvdb conv=sync,noerror,sparse bs=64K | gzip -c | ssh root@" + str(dst_ip) + " \"gunzip -c | dd of=/dev/xvdb\"; exec bash\'")
 type(stdin)
 for line in stdout.readlines():
