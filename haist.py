@@ -122,16 +122,19 @@ def check_for_rackconnect(all_roles, account):
         rackconnect_role_check=all_roles[role]["name"]
 #This logic catches accounts with the RCv3 cloud load balancers role as well
         rackconnect_regions=[]
-        if "RCv3" and "SG" in rackconnect_role_check:
+
+        if "rackconnect" and "v3" in rackconnect_role_check:
+            rackconnect_regions.append(all_roles[role]["name"].lower().split("-")[1])
+            break
+            return rackconnect_regions
+
+        elif "RCv3" and "SG" in rackconnect_role_check:
             print rackconnect_role_check
             rackconnect_regions.append(all_roles[role]["name"].lower().split("-")[0].split(":")[1])
             break
             return rackconnect_regions
 
-        elif "rackconnect" and "v3" in rackconnect_role_check:
-            rackconnect_regions.append(all_roles[role]["name"].lower().split("-")[1])
-            break
-            return rackconnect_regions
+
 
     #if we've gotten this far, then the account does not have rackconnect
     return rackconnect_regions
@@ -146,7 +149,7 @@ def find_rackconnect_network(token, account, rackconnect_region):
     rackconnect_network=rackconnect_network_list.json()[0]["id"]
     return rackconnect_network
 
-rackconnect_regions=check_for_rackconnect(all_roles)
+rackconnect_regions=check_for_rackconnect(all_roles,account)
 
 if not rackconnect_regions:
     rackconnect_network = 0
@@ -854,6 +857,17 @@ for line in stdout.readlines():
     print line,
 for line in  stderr.readlines():
     print line,
+
+#We have to wipe out the partition table on destination,
+#otherwise Windows servers won't migrate properly
+
+print ("")
+print ("Zeroing out the partition table on destination in preparation for copy")
+stdin, stdout, stderr = ssh.exec_command("screen -LdmS HAIST bash -c \'ssh root@"\
++ str(dst_ip) + "dd if=/dev/zero of=/dev/xvdb bs=512 count=2\"; exec bash\'")
+
+
+#Copying the disk via DD
 
 stdin, stdout, stderr = ssh.exec_command("screen -LdmS HAIST bash -c \'dd if=/dev/xvdb conv=sync,noerror,sparse bs=64K | gzip -c | ssh root@" + str(dst_ip) + " \"gunzip -c | dd of=/dev/xvdb\"; exec bash\'")
 type(stdin)
